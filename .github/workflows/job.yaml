@@ -1,0 +1,146 @@
+name: Terraform Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+env:
+  AWS_REGION: eu-central-1
+  TF_VERSION: 1.5.0
+  ECR_REPOSITORY: nginx-custom
+  IMAGE_TAG: latest
+
+
+jobs:
+  # lokalni build docker image pro test
+  docker_build:
+    name: 'Build Docker Image'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t $ECR_REPOSITORY:$IMAGE_TAG ./nginx-custom
+
+  # test
+  docker_test:
+    name: 'Test Docker Image'
+    runs-on: ubuntu-latest
+    needs: docker_build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run container
+        run: docker run -d -p 8080:80 --name test_container $ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: Wait for container to be ready
+        run: |
+          echo "Waiting for Nginx to start..."
+          for i in {1..15}; do
+            if curl -s http://localhost:8080 | grep -q "UKOL9 test page"; then
+              echo "✅ Container is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "❌ Test failed: string not found after 30 seconds"
+          exit 1
+
+# pokud projde udělá se ecr pokud už neexistuje
+  terraform-ecr:
+    name: 'ECR pro custom html'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-region: eu-central-1
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Apply toho ECR 
+        run: terraform apply -auto-approve -target=aws_ecr_repository.nginx_repo || echo "ECR already exists"
+
+# Docker zacatek
+  docker_html:
+    name: 'Docker Image buildnu a hodim do ECR'
+    runs-on: ubuntu-latest
+    needs: terraform-ecr
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-region: eu-central-1
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+        
+      - name: Build Docker image
+        run: docker build -t $ECR_REPOSITORY:$IMAGE_TAG ./nginx-custom
+
+      - name: Tag Docker image
+        run: docker tag $ECR_REPOSITORY:$IMAGE_TAG ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: Push Docker image to ECR
+        run: docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
+
+
+# Terraform zacatek
+  terraform-ecs:
+    name: 'Terraform (ECS Deploy)'
+    runs-on: ubuntu-latest
+    needs: docker_html
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-region: eu-central-1
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}    
+      
+      - name: Init Terraform
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main'
+        run: terraform apply -auto-approve tfplan
