@@ -32,12 +32,12 @@ jobs:
         echo "Waiting for Nginx to start..."
         for i in {1..15}; do
           if curl -s http://localhost:8080 | grep -q "UKOL9 test page"; then
-            echo "✅ Container is ready"
+            echo "✅ text nalezen"
             exit 0
           fi
           sleep 2
         done
-        echo "❌ Test failed: string not found after 30 seconds"
+        echo "❌ Test failul nenašlo to text během 30 sekund"
         exit 1
 
 # pokud projde udělá se ecr pokud už neexistuje
