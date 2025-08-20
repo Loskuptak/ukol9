@@ -23,3 +23,5 @@ terraform.rc
 # Ignore sensitive variable files
 *.tfvars
 *.tfvars.json
+README.md
+nginx-custom/test.py
