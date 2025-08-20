@@ -17,4 +17,12 @@ variable "allowed_cidr" {
   type        = string
   default     = "0.0.0.0/0"  
 }
+variable "ecs_cluster_name" {
+  type    = string
+  default = "ecs-nukol7-cluster"
+}
 
+variable "ecs_service_name" {
+  type    = string
+  default = "nginx-service"
+}

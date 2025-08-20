@@ -1,19 +1,3 @@
-# proměnné
-variable "project_name" {
-  type    = string
-  default = "nukol7"
-}
-
-variable "ecs_cluster_name" {
-  type    = string
-  default = "ecs-nukol7-cluster"
-}
-
-variable "ecs_service_name" {
-  type    = string
-  default = "nginx-service"
-}
-
 # grafy
 resource "aws_cloudwatch_dashboard" "ecs_service_dashboard" {
   dashboard_name = "ECS-${var.ecs_service_name}-Dashboard"
