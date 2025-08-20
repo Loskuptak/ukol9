@@ -1,12 +1,7 @@
-# log grupa co jsem delal predtim 
-data "aws_cloudwatch_log_group" "ecs_lg" {
-  name = "/ecs/${var.project_name}"
-}
-
 # měrim 200 status code z nginx logu
 resource "aws_cloudwatch_log_metric_filter" "nginx_http_200" {
   name           = "nginx-http-200"
-  log_group_name = data.aws_cloudwatch_log_group.ecs_lg.name
+  log_group_name = aws_cloudwatch_log_group.ecs_nginx.name
   pattern = " 200 "
 
   metric_transformation {
